@@ -1,0 +1,47 @@
+# Render Blueprint: free Key Value (Redis) + free worker web service.
+# Spec: https://render.com/docs/blueprint-spec
+# `repo` is omitted so Render uses the repository that contains this file.
+services:
+  - type: keyvalue
+    name: openreply-redis
+    region: oregon
+    plan: free
+    maxmemoryPolicy: noeviction
+    # connectionString is private-network only. Open the public endpoint so
+    # Vercel (outside Render) can use the external Redis URL.
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: everywhere
+
+  - type: web
+    name: openreply-worker
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: npm ci && npm run db:generate
+    startCommand: npm run worker
+    healthCheckPath: /healthz
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          name: openreply-redis
+          type: keyvalue
+          property: connectionString
+      - key: DATABASE_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: NEXTAUTH_URL
+        sync: false
+      - key: NEXTAUTH_SECRET
+        sync: false
+      - key: META_GRAPH_API_VERSION
+        sync: false
+      - key: INSTAGRAM_APP_ID
+        sync: false
+      - key: INSTAGRAM_APP_SECRET
+        sync: false
+      - key: FACEBOOK_APP_SECRET
+        sync: false
+      - key: WEBHOOK_VERIFY_TOKEN
+        sync: false
