@@ -90,6 +90,8 @@ npm run worker            # in a second terminal, this sends the DMs
 
 Two processes, always. `npm run dev` serves the app and receives webhooks. `npm run worker` is what actually sends the messages. If comments come in and no DM ever arrives, the worker is the first thing to check.
 
+This deployment keeps the Render free-tier worker awake with [`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml), which pings it every 10 minutes. GitHub disables scheduled workflows after 60 days of repository inactivity. A commit, or a manual run of **Keep worker awake** from the Actions tab, turns the schedule back on.
+
 Full environment variables and the production layout are in [docs/setup.md](docs/setup.md).
 
 ## Set it up with your AI assistant
