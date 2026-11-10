@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
-import { getBaseUrl } from "@/lib/env";
+import { getBaseUrl, isUnifiedLoginMode } from "@/lib/env";
 import { canConnectInstagramAccount } from "@/lib/instagram-accounts";
 import { getLongLivedToken, getUserInfo, subscribeInstagramAccountToWebhooks } from "@/lib/meta/client";
 import {
   encryptToken,
   exchangeCodeForToken,
+  exchangeUnifiedCodeForToken,
   verifyOAuthState,
 } from "@/lib/meta/oauth";
+import { connectAssignedInstagramAccounts } from "@/lib/meta/unified-connect";
 import { canManageWorkspace } from "@/lib/workspace-access";
 
 export async function GET(request: NextRequest) {
@@ -43,6 +45,26 @@ export async function GET(request: NextRequest) {
 
   try {
     const redirectUri = `${baseUrl}/api/instagram/callback`;
+    if (isUnifiedLoginMode()) {
+      const exchanged = await exchangeUnifiedCodeForToken(code, redirectUri);
+      const result = await connectAssignedInstagramAccounts({
+        accessToken: exchanged.accessToken,
+        expiresIn: exchanged.expiresIn,
+        workspaceId: state.workspaceId,
+      });
+      if (result.accountCount === 0) {
+        return NextResponse.redirect(
+          `${baseUrl}/settings?instagram=failed&reason=no_accounts_shared`
+        );
+      }
+      if (result.connected === 0) {
+        return NextResponse.redirect(
+          `${baseUrl}/settings?instagram=already_connected`
+        );
+      }
+      return NextResponse.redirect(`${baseUrl}/dashboard?connected=true`);
+    }
+
     const { accessToken: shortLivedToken } = await exchangeCodeForToken(
       code,
       redirectUri
@@ -89,6 +111,7 @@ export async function GET(request: NextRequest) {
       accessToken: encryptedToken,
       tokenExpiresAt,
       webhookSubscribed,
+      needsReconnect: false,
     };
     const existing = await prisma.instagramAccount.findUnique({ where: { instagramId } });
     if (existing) {

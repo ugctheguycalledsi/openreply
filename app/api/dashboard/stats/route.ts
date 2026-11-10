@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId, getCurrentWorkspaceId } from "@/lib/auth";
+import { isUnifiedLoginMode } from "@/lib/env";
 import { prisma } from "@/lib/db/client";
 import {
   calculateCtr,
@@ -69,6 +70,7 @@ export async function GET(request: NextRequest) {
         instagramId: true,
         provider: true,
         tokenExpiresAt: true,
+        needsReconnect: true,
         webhookSubscribed: true,
       },
     }),
@@ -82,6 +84,7 @@ export async function GET(request: NextRequest) {
         name: true,
         provider: true,
         tokenExpiresAt: true,
+        needsReconnect: true,
         webhookSubscribed: true,
       },
     }),
@@ -208,6 +211,7 @@ export async function GET(request: NextRequest) {
       workspace,
       instagramAccount,
       instagramAccounts,
+      unifiedLogin: isUnifiedLoginMode(),
       selectedInstagramAccountId: selectedAccountId,
       totalAutomations,
       activeAutomations,

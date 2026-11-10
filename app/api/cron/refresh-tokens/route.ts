@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
+import { isUnifiedLoginMode } from "@/lib/env";
 import { decryptToken, encryptToken } from "@/lib/meta/oauth";
-import { refreshLongLivedToken } from "@/lib/meta/client";
+import { refreshLongLivedToken, TokenExpiredError } from "@/lib/meta/client";
 
 const DAYS_BEFORE_EXPIRY = 10;
 
@@ -29,7 +30,12 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  const accountsToRefresh = await prisma.instagramAccount.findMany({
+  // System-user tokens from unified login are not Instagram long-lived tokens.
+  // Refreshing them with ig_refresh_token fails and can invalidate a token
+  // that otherwise does not expire.
+  const accountsToRefresh = isUnifiedLoginMode()
+    ? []
+    : await prisma.instagramAccount.findMany({
     where: {
       accessToken: { not: "" },
       provider: "META",
@@ -66,6 +72,7 @@ export async function GET(request: NextRequest) {
         data: {
           accessToken: encryptedToken,
           tokenExpiresAt: newExpiry,
+          needsReconnect: false,
         },
       });
 
@@ -76,6 +83,12 @@ export async function GET(request: NextRequest) {
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      if (err instanceof TokenExpiredError) {
+        await prisma.instagramAccount.update({
+          where: { id: account.id },
+          data: { needsReconnect: true },
+        });
+      }
       await prisma.operationalEvent.create({
         data: {
           workspaceId: account.workspaceId,

@@ -23,9 +23,11 @@ interface SettingsData {
     AccountOption & {
       provider?: "META" | "ZERNIO";
       tokenExpiresAt: string | null;
+      needsReconnect?: boolean;
       webhookSubscribed: boolean;
     }
   >;
+  unifiedLogin?: boolean;
 }
 
 interface WorkspaceMembersData {
@@ -60,6 +62,8 @@ export default function SettingsPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER">("MEMBER");
   const [memberError, setMemberError] = useState<string | null>(null);
+  const [pastedToken, setPastedToken] = useState("");
+  const [tokenMessage, setTokenMessage] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -91,6 +95,31 @@ export default function SettingsPage() {
       body: JSON.stringify({ instagramAccountId }),
     });
     window.location.reload();
+  }
+
+  async function connectPastedToken(event: React.FormEvent) {
+    event.preventDefault();
+    setTokenMessage(null);
+    setBusy("token");
+    const res = await fetch("/api/instagram/connect-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: pastedToken }),
+    });
+    const payload = await res.json().catch(() => null);
+    if (payload?.success) {
+      window.location.reload();
+      return;
+    }
+    const error = payload?.error;
+    setTokenMessage(
+      error === "no_accounts_shared"
+        ? t("No Instagram accounts were shared with the app.")
+        : error === "already_connected"
+          ? t("That Instagram account is connected to another workspace. Disconnect it there first, or connect a different account.")
+          : error ?? t("That token could not be connected.")
+    );
+    setBusy(null);
   }
 
   async function inviteMember(event: React.FormEvent) {
@@ -199,6 +228,7 @@ export default function SettingsPage() {
                     @{account.username}
                   </p>
                   <p className="mt-1 text-xs text-muted">
+                    {account.needsReconnect ? <>{t("Reconnect required")} · </> : null}
                     {account.provider === "ZERNIO" ? t("Connected via Zernio") : <>{t("Token expires")}{" "}
                     {account.tokenExpiresAt
                       ? new Date(account.tokenExpiresAt).toLocaleDateString(locale)
@@ -228,6 +258,35 @@ export default function SettingsPage() {
             {t("Connect using your own Meta app")}
           </a>
         </div>
+
+        {membersData?.currentUserRole === "OWNER" && data?.unifiedLogin && (
+          <form onSubmit={connectPastedToken} className="mt-4 space-y-2">
+            <label htmlFor="meta-access-token" className="block text-sm font-medium text-foreground">
+              {t("Paste a Meta access token")}
+            </label>
+            <p className="text-xs text-muted">
+              {t("Use this when Facebook Login cannot finish in the browser. The token is encrypted and never shown again.")}
+            </p>
+            <input
+              id="meta-access-token"
+              type="password"
+              autoComplete="off"
+              value={pastedToken}
+              onChange={(event) => setPastedToken(event.target.value)}
+              className="w-full rounded border border-border bg-surface px-3 py-2 text-sm"
+            />
+            {tokenMessage && (
+              <p role="alert" className="text-sm text-error">{tokenMessage}</p>
+            )}
+            <button
+              type="submit"
+              disabled={busy === "token" || !pastedToken.trim()}
+              className="px-4 py-2 rounded text-sm font-medium border border-border hover:bg-surface disabled:opacity-50"
+            >
+              {busy === "token" ? t("Connecting...") : t("Connect with token")}
+            </button>
+          </form>
+        )}
       </section>
 
       <section className="panel rounded p-4 sm:p-6">

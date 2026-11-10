@@ -31,6 +31,7 @@ function respond(body: unknown, status = 200) {
 describe("Instagram provider boundary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("FACEBOOK_LOGIN_CONFIG_ID", "");
     vi.stubGlobal("fetch", fetchMock);
   });
   it("resolves only the selected account workspace credentials", async () => {
@@ -122,7 +123,7 @@ describe("Instagram provider boundary", () => {
     respond({ data: [{ id: "media" }] });
     expect(
       await getUserMedia({
-        context: { provider: "META", accessToken: "meta" },
+        context: { provider: "META", accessToken: "meta", instagramId: "ig-user" },
         limit: 3,
       })
     ).toEqual([{ id: "media" }]);

@@ -12,6 +12,7 @@ const failure = (code = 1) => new Response(JSON.stringify({
 
 /** Simulate the reported bad 42nd entry, including an unrelated message cursor. */
 function installGraph(broken: number[] = [], total = 55, pageCap = 50) {
+  vi.stubEnv("FACEBOOK_LOGIN_CONFIG_ID", "");
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input));
     expect(url.origin).toBe("https://graph.instagram.com");
@@ -53,6 +54,7 @@ function installGraph(broken: number[] = [], total = 55, pageCap = 50) {
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });

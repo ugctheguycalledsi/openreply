@@ -41,7 +41,11 @@ services:
         sync: false
       - key: INSTAGRAM_APP_SECRET
         sync: false
+      - key: FACEBOOK_APP_ID
+        sync: false
       - key: FACEBOOK_APP_SECRET
+        sync: false
+      - key: FACEBOOK_LOGIN_CONFIG_ID
         sync: false
       - key: WEBHOOK_VERIFY_TOKEN
         sync: false

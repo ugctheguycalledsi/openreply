@@ -1,7 +1,24 @@
-import { getMetaGraphApiVersion, requireEnv } from "@/lib/env";
+import {
+  getMetaGraphApiVersion,
+  isUnifiedLoginMode,
+  requireEnv,
+} from "@/lib/env";
 
 function instagramGraphBase() {
-  return `https://graph.instagram.com/${getMetaGraphApiVersion()}`;
+  // Unified login tokens are system-user tokens and only answer on the
+  // Facebook Graph host. Instagram Login tokens stay on graph.instagram.com.
+  const host = isUnifiedLoginMode()
+    ? "https://graph.facebook.com"
+    : "https://graph.instagram.com";
+  return `${host}/${getMetaGraphApiVersion()}`;
+}
+
+function profileNode(igUserId?: string) {
+  if (!isUnifiedLoginMode()) return `${instagramGraphBase()}/me`;
+  if (!igUserId) {
+    throw new Error("Instagram account id is required for unified login");
+  }
+  return `${instagramGraphBase()}/${igUserId}`;
 }
 
 function facebookGraphBase() {
@@ -616,11 +633,16 @@ export async function getConversationMessages(
   return data.messages?.data ?? [];
 }
 
-export async function getUserInfo(accessToken: string): Promise<InstagramUser> {
-  const url = new URL(`${instagramGraphBase()}/me`);
+export async function getUserInfo(
+  accessToken: string,
+  igUserId?: string
+): Promise<InstagramUser> {
+  const url = new URL(profileNode(igUserId));
   url.searchParams.set(
     "fields",
-    "id,user_id,username,name,profile_picture_url,followers_count"
+    isUnifiedLoginMode()
+      ? "id,username,name,profile_picture_url,followers_count"
+      : "id,user_id,username,name,profile_picture_url,followers_count"
   );
   url.searchParams.set("access_token", accessToken);
 
@@ -636,9 +658,10 @@ const MEDIA_PAGE_SIZE = 100;
 
 export async function getUserMedia(
   accessToken: string,
+  igUserId: string,
   limit = 25
 ): Promise<InstagramMedia[]> {
-  const url = new URL(`${instagramGraphBase()}/me/media`);
+  const url = new URL(`${profileNode(igUserId)}/media`);
   url.searchParams.set("fields", MEDIA_FIELDS);
   url.searchParams.set("limit", limit.toString());
   url.searchParams.set("access_token", accessToken);
@@ -656,11 +679,12 @@ export async function getUserMedia(
  */
 export async function getAllUserMedia(
   accessToken: string,
+  igUserId: string,
   max = 500
 ): Promise<InstagramMedia[]> {
   const results: InstagramMedia[] = [];
 
-  const first = new URL(`${instagramGraphBase()}/me/media`);
+  const first = new URL(`${profileNode(igUserId)}/media`);
   first.searchParams.set("fields", MEDIA_FIELDS);
   first.searchParams.set("limit", String(Math.min(MEDIA_PAGE_SIZE, max)));
   first.searchParams.set("access_token", accessToken);
@@ -825,12 +849,53 @@ export async function subscribeInstagramAccountToWebhooks(
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
-        subscribed_fields: ["comments", "messages"],
+        subscribed_fields: isUnifiedLoginMode()
+          ? ["comments", "messages", "messaging_postbacks"]
+          : ["comments", "messages"],
       }),
     }
   );
 
   return handleResponse(response);
+}
+
+/**
+ * Instagram professional accounts assigned to the system user behind a
+ * unified-login token. /me itself is that system user, not an Instagram account.
+ */
+export async function listAssignedInstagramAccounts(
+  accessToken: string
+): Promise<Array<{ id: string; username?: string }>> {
+  const accounts: Array<{ id: string; username?: string }> = [];
+  const first = new URL(
+    `${facebookGraphBase()}/me/assigned_instagram_accounts`
+  );
+  first.searchParams.set("fields", "id,username");
+  first.searchParams.set("limit", "100");
+  first.searchParams.set("access_token", accessToken);
+
+  let nextUrl: string | null = first.toString();
+  const seenIds = new Set<string>();
+  const seenPages = new Set<string>();
+
+  while (nextUrl && seenPages.size < 20) {
+    if (seenPages.has(nextUrl)) break;
+    seenPages.add(nextUrl);
+    const response: Response = await fetch(nextUrl);
+    const page: {
+      data?: Array<{ id: string; username?: string }>;
+      paging?: { next?: string };
+    } = await handleResponse(response);
+    for (const row of page.data ?? []) {
+      if (!row.id || seenIds.has(row.id)) continue;
+      seenIds.add(row.id);
+      accounts.push(row);
+    }
+    const next: string | null = page.paging?.next ?? null;
+    nextUrl = next && next !== nextUrl ? next : null;
+  }
+
+  return accounts;
 }
 
 export async function debugToken(inputToken: string, accessToken: string) {
