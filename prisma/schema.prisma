@@ -135,6 +135,9 @@ model InstagramAccount {
   zernioAccountId   String?
   accessToken       String
   tokenExpiresAt    DateTime?
+  // Set when Graph returns error 190. Unified-login tokens are not refreshed;
+  // the owner reconnects instead.
+  needsReconnect    Boolean  @default(false)
   webhookSubscribed Boolean  @default(false)
   connectedAt       DateTime @default(now())
   updatedAt         DateTime @updatedAt

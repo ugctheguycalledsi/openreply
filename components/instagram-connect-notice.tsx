@@ -79,6 +79,13 @@ export function InstagramConnectNotice() {
 
   if (status === "failed") {
     const reason = searchParams.get("reason");
+    if (reason === "no_accounts_shared") {
+      return (
+        <Notice tone="error" title={t("Instagram connection failed")}>
+          <p>{t("No Instagram accounts were shared with the app.")}</p>
+        </Notice>
+      );
+    }
 
     return (
       <Notice tone="error" title={t("Instagram connection failed")}>

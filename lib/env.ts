@@ -26,18 +26,37 @@ export function getEncryptionKeyHex(): string {
   return value;
 }
 
+/**
+ * New Meta apps cannot use Instagram Business Login. When a Facebook Login
+ * for Business configuration id is set, OAuth and Graph calls use that
+ * unified-login flow. Unset (including blank) keeps the legacy Instagram
+ * login path, so existing deployments are unchanged.
+ */
+export function isUnifiedLoginMode(): boolean {
+  return Boolean(process.env.FACEBOOK_LOGIN_CONFIG_ID?.trim());
+}
+
 // Env vars that must be present before an Instagram OAuth round trip can even
 // start. Checked up front so a self-hoster with a half-filled .env gets the
 // variable names back instead of an unhandled throw from requireEnv().
-const INSTAGRAM_OAUTH_ENV = [
+const LEGACY_OAUTH_ENV = [
   "INSTAGRAM_APP_ID",
   "INSTAGRAM_APP_SECRET",
   "ENCRYPTION_KEY",
   "NEXTAUTH_SECRET",
 ] as const;
 
+const UNIFIED_OAUTH_ENV = [
+  "FACEBOOK_APP_ID",
+  "FACEBOOK_APP_SECRET",
+  "FACEBOOK_LOGIN_CONFIG_ID",
+  "ENCRYPTION_KEY",
+  "NEXTAUTH_SECRET",
+] as const;
+
 export function getMissingInstagramOAuthEnv(): string[] {
-  return INSTAGRAM_OAUTH_ENV.filter((name) => {
+  const names = isUnifiedLoginMode() ? UNIFIED_OAUTH_ENV : LEGACY_OAUTH_ENV;
+  return names.filter((name) => {
     const value = process.env[name];
     if (!value) return true;
     // A malformed key fails later inside encryptToken, after the user has

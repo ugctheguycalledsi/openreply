@@ -5,7 +5,12 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "crypto";
-import { getEncryptionKeyHex, requireEnv } from "@/lib/env";
+import {
+  getEncryptionKeyHex,
+  getMetaGraphApiVersion,
+  isUnifiedLoginMode,
+  requireEnv,
+} from "@/lib/env";
 
 // Instagram API with Instagram Login authorizes on www.instagram.com. The old
 // api.instagram.com/oauth/authorize host belonged to the retired Basic Display
@@ -87,7 +92,23 @@ export function verifyOAuthState(state: string | null): OAuthStatePayload | null
   }
 }
 
+const FACEBOOK_OAUTH_URL = "https://www.facebook.com/dialog/oauth";
+
 export function getAuthorizationUrl(redirectUri: string, state: string): string {
+  if (isUnifiedLoginMode()) {
+    // Facebook Login for Business. config_id carries the permissions, so the
+    // request must not also send a scope list.
+    const params = new URLSearchParams({
+      client_id: requireEnv("FACEBOOK_APP_ID"),
+      config_id: requireEnv("FACEBOOK_LOGIN_CONFIG_ID"),
+      redirect_uri: redirectUri,
+      response_type: "code",
+      override_default_response_type: "true",
+      state,
+    });
+    return `${FACEBOOK_OAUTH_URL}?${params.toString()}`;
+  }
+
   const params = new URLSearchParams({
     client_id: requireEnv("INSTAGRAM_APP_ID"),
     redirect_uri: redirectUri,
@@ -98,6 +119,42 @@ export function getAuthorizationUrl(redirectUri: string, state: string): string 
   });
 
   return `${INSTAGRAM_OAUTH_URL}?${params.toString()}`;
+}
+
+/**
+ * Exchange a Facebook Login for Business code. The result is a system-user
+ * token. It may omit expires_in, which means Meta did not give it an expiry.
+ */
+export async function exchangeUnifiedCodeForToken(
+  code: string,
+  redirectUri: string
+): Promise<{ accessToken: string; expiresIn?: number }> {
+  const url = new URL(
+    `https://graph.facebook.com/${getMetaGraphApiVersion()}/oauth/access_token`
+  );
+  url.searchParams.set("client_id", requireEnv("FACEBOOK_APP_ID"));
+  url.searchParams.set("client_secret", requireEnv("FACEBOOK_APP_SECRET"));
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("code", code);
+
+  const response = await fetch(url.toString());
+  const data = (await response.json().catch(() => null)) as {
+    access_token?: string;
+    expires_in?: number;
+    error?: { message?: string };
+    error_message?: string;
+  } | null;
+
+  if (!response.ok || !data?.access_token) {
+    const message =
+      data?.error?.message || data?.error_message || "Token exchange failed";
+    throw new Error(`Token exchange failed: ${message}`);
+  }
+
+  return {
+    accessToken: data.access_token,
+    ...(typeof data.expires_in === "number" ? { expiresIn: data.expires_in } : {}),
+  };
 }
 
 export async function exchangeCodeForToken(

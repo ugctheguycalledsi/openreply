@@ -1570,9 +1570,20 @@ async function recordWorkerFailure(
     const account = instagramAccountId
       ? await prisma.instagramAccount.findUnique({
           where: { instagramId: instagramAccountId },
-          select: { workspaceId: true },
+          select: { workspaceId: true, provider: true },
         })
       : null;
+
+    if (
+      error instanceof TokenExpiredError &&
+      account?.provider === "META" &&
+      instagramAccountId
+    ) {
+      await prisma.instagramAccount.updateMany({
+        where: { instagramId: instagramAccountId, provider: "META" },
+        data: { needsReconnect: true },
+      });
+    }
 
     await prisma.operationalEvent.create({
       data: {
